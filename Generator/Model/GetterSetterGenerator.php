@@ -123,6 +123,9 @@ EOD
             $max = is_null($jsonSchema->getMaxItems()) ? '∞' : $jsonSchema->getMaxItems();
             $docs[] = ' * @items('.$jsonSchema->getMinItems().', '.$max.')';
         }
+        if( is_callable([$jsonSchema,"getItems"]) && !is_null($jsonSchema->getItems()) && is_callable([$jsonSchema->getItems(),"getEnum"]) && !is_null($jsonSchema->getItems()->getEnum()) ) {
+            $docs[] = ' * @Enum({"'.  implode('", "', $jsonSchema->getItems()->getEnum()).'"})';
+        }
         if( is_callable([$jsonSchema,"getMinProperties"]) && !is_null($jsonSchema->getMinProperties()) || is_callable([$jsonSchema,"getMaxProperties"]) && !is_null($jsonSchema->getMaxProperties()) ) {
             $max = is_null($jsonSchema->getMaxProperties()) ? '∞' : $jsonSchema->getMaxProperties();
             $docs[] = ' * @properties('.$jsonSchema->getMinProperties().', '.$max.')';
@@ -221,7 +224,7 @@ EOD
                 $stmts[] = new Stmt\If_($condInArray, ['stmts'=>[$affectation]]);   
             } elseif( !is_null($jsonSchema->getMinItems()) || !is_null($jsonSchema->getMaxItems()) ) {
                 /* @todo : check maxLength: 200, minLength: 1, type:[0 => "string"] */
-                if( $items = $jsonSchema->getItems() ) {                   
+                if( $items = $jsonSchema->getItems() ) {
                 }
                 if( !is_null($jsonSchema->getMinItems()) ) {
                     $condGreaterOrEqual = new Expr\BinaryOp\GreaterOrEqual(
@@ -239,18 +242,40 @@ EOD
                 $condIsArray = new Expr\FuncCall(new Name('is_array'), [ new Expr\Variable($this->getNaming()->getPropertyName($name)) ] );
                 $isRequiredOrMinItems = (!is_null($jsonSchema->getMinItems()) || $jsonSchema->getRequired());
                 if( $isRequiredOrMinItems ) {
-                    if( !is_null($jsonSchema->getMinItems()) && !is_null($jsonSchema->getMaxItems()) ) {
-                        $condSmallerOrEqualAndGreaterOrEqual = new Expr\BinaryOp\LogicalAnd($condGreaterOrEqual,$condSmallerOrEqual);
-                        $condIsArrayAndSmallerOrEqualAndGreaterOrEqual = new Expr\BinaryOp\LogicalAnd($condIsArray,$condSmallerOrEqualAndGreaterOrEqual);
-                        $ifs = $condIsArrayAndSmallerOrEqualAndGreaterOrEqual;
-                    } elseif (!is_null($jsonSchema->getMinItems())) {
-                        $condIsArrayAndreaterOrEqual = new Expr\BinaryOp\LogicalAnd($condIsArray,$condGreaterOrEqual);
-                        $ifs = $condIsArrayAndreaterOrEqual;
-                    } elseif (!is_null($jsonSchema->getMaxItems())) {
-                        $condIsArrayAndSmallerOrEqual = new Expr\BinaryOp\LogicalAnd($condIsArray,$condSmallerOrEqual);
-                        $ifs = $condIsArrayAndSmallerOrEqual;
+                    if(!is_null($jsonSchema->getItems()->getEnum())) {
+                        $paramsIntersectKey = [
+                            new Expr\Variable($this->getNaming()->getPropertyName($name)),
+                            $this->normalizeValue($jsonSchema->getItems()->getEnum())
+                        ];
+                        $assignArrayIntersect = new Expr\Assign(
+                            new Expr\Variable($this->getNaming()->getPropertyName($name)),
+                            new Expr\FuncCall(new Name('array_intersect'), $paramsIntersectKey )
+                        );
+                        if( !is_null($jsonSchema->getMinItems()) && !is_null($jsonSchema->getMaxItems()) ) {
+                            $ifs = new Expr\BinaryOp\LogicalAnd($condGreaterOrEqual,$condSmallerOrEqual);
+                            $ifs = new Expr\BinaryOp\LogicalAnd($assignArrayIntersect,$ifs);
+                            $ifs = new Expr\BinaryOp\LogicalAnd($condIsArray,$ifs);
+                        } elseif (!is_null($jsonSchema->getMinItems())) {
+                            $ifs = new Expr\BinaryOp\LogicalAnd($assignArrayIntersect,$condGreaterOrEqual);
+                            $ifs = new Expr\BinaryOp\LogicalAnd($condIsArray,$ifs);
+                        } elseif (!is_null($jsonSchema->getMaxItems())) {
+                            $ifs = new Expr\BinaryOp\LogicalAnd($assignArrayIntersect,$condSmallerOrEqual);
+                            $ifs = new Expr\BinaryOp\LogicalAnd($condIsArray,$ifs);
+                        }                        
+                    } else {
+                        if( !is_null($jsonSchema->getMinItems()) && !is_null($jsonSchema->getMaxItems()) ) {
+                            $condSmallerOrEqualAndGreaterOrEqual = new Expr\BinaryOp\LogicalAnd($condGreaterOrEqual,$condSmallerOrEqual);
+                            $condIsArrayAndSmallerOrEqualAndGreaterOrEqual = new Expr\BinaryOp\LogicalAnd($condIsArray,$condSmallerOrEqualAndGreaterOrEqual);
+                            $ifs = $condIsArrayAndSmallerOrEqualAndGreaterOrEqual;
+                        } elseif (!is_null($jsonSchema->getMinItems())) {
+                            $condIsArrayAndreaterOrEqual = new Expr\BinaryOp\LogicalAnd($condIsArray,$condGreaterOrEqual);
+                            $ifs = $condIsArrayAndreaterOrEqual;
+                        } elseif (!is_null($jsonSchema->getMaxItems())) {
+                            $condIsArrayAndSmallerOrEqual = new Expr\BinaryOp\LogicalAnd($condIsArray,$condSmallerOrEqual);
+                            $ifs = $condIsArrayAndSmallerOrEqual;
+                        }                        
                     }
-                    $stmts[] = new Stmt\If_($ifs, ['stmts'=>[$affectation]]);                                        
+                    $stmts[] = new Stmt\If_($ifs, ['stmts'=>[$affectation]]); 
                 } else {
                     if( !is_null($jsonSchema->getMinItems()) && !is_null($jsonSchema->getMaxItems()) ) {
                         $condSmallerOrEqualAndGreaterOrEqual = new Expr\BinaryOp\LogicalAnd($condGreaterOrEqual,$condSmallerOrEqual);
@@ -264,8 +289,7 @@ EOD
                         $elseifs = new Stmt\ElseIf_($condIsArrayAndSmallerOrEqual, [$affectation]);
                     }
                     $stmts[] = new Stmt\If_($condIsNull, ['stmts'=>[$affectation],'elseifs'=>[$elseifs]]);                    
-                }
-                
+                }                
             }  elseif( !is_null($jsonSchema->getMinProperties()) || !is_null($jsonSchema->getMaxProperties()) ) {
                 if( !is_null($jsonSchema->getMinProperties()) ) {
                     $condGreaterOrEqual = new Expr\BinaryOp\GreaterOrEqual(

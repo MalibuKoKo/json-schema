@@ -64,6 +64,9 @@ trait PropertyGenerator
             $max = is_null($jsonSchema->getMaxItems()) ? '∞' : $jsonSchema->getMaxItems();
             $docs[] = ' * @items('.$jsonSchema->getMinItems().', '.$max.')';
         }
+        if( is_callable([$jsonSchema,"getItems"]) && !is_null($jsonSchema->getItems()) && is_callable([$jsonSchema->getItems(),"getEnum"]) && !is_null($jsonSchema->getItems()->getEnum()) ) {
+            $docs[] = ' * @Enum({"'.  implode('", "', $jsonSchema->getItems()->getEnum()).'"})';
+        }
         if( is_callable([$jsonSchema,"getMinProperties"]) && !is_null($jsonSchema->getMinProperties()) || is_callable([$jsonSchema,"getMaxProperties"]) && !is_null($jsonSchema->getMaxProperties()) ) {
             $max = is_null($jsonSchema->getMaxProperties()) ? '∞' : $jsonSchema->getMaxProperties();
             $docs[] = ' * @properties('.$jsonSchema->getMinProperties().', '.$max.')';
