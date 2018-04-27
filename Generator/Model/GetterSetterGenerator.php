@@ -126,6 +126,9 @@ EOD
         if( is_callable([$jsonSchema,"getItems"]) && !is_null($jsonSchema->getItems()) && is_callable([$jsonSchema->getItems(),"getEnum"]) && !is_null($jsonSchema->getItems()->getEnum()) ) {
             $docs[] = ' * @Enum({"'.  implode('", "', $jsonSchema->getItems()->getEnum()).'"})';
         }
+        if( is_callable([$jsonSchema,"getItems"]) && !is_null($jsonSchema->getItems()) && is_callable([$jsonSchema->getItems(),"getPattern"]) && !is_null($jsonSchema->getItems()->getPattern()) ) {
+            $docs[] = ' * @pattern : '.  $jsonSchema->getItems()->getPattern();
+        }
         if( is_callable([$jsonSchema,"getMinProperties"]) && !is_null($jsonSchema->getMinProperties()) || is_callable([$jsonSchema,"getMaxProperties"]) && !is_null($jsonSchema->getMaxProperties()) ) {
             $max = is_null($jsonSchema->getMaxProperties()) ? '∞' : $jsonSchema->getMaxProperties();
             $docs[] = ' * @properties('.$jsonSchema->getMinProperties().', '.$max.')';
@@ -261,7 +264,58 @@ EOD
                         } elseif (!is_null($jsonSchema->getMaxItems())) {
                             $ifs = new Expr\BinaryOp\LogicalAnd($assignArrayIntersect,$condSmallerOrEqual);
                             $ifs = new Expr\BinaryOp\LogicalAnd($condIsArray,$ifs);
-                        }                        
+                        }
+                    } elseif(!is_null($jsonSchema->getItems()->getPattern())) {
+
+                        $paramsPregMatch = [
+                            new \PhpParser\Node\Scalar\String_('#'.$jsonSchema->getItems()->getPattern().'#'.'u'),
+                            new Expr\Variable('value'),
+                            new Expr\Variable('resultats'),
+                            new \PhpParser\Node\Scalar\LNumber(0),
+                            new \PhpParser\Node\Scalar\LNumber(0),
+                        ];
+                        $nodePregMatch = new Expr\FuncCall(new Name('preg_match'), $paramsPregMatch );
+
+                        $nodeReturnPregMatch = new \PhpParser\Node\Stmt\Return_($nodePregMatch);
+
+                        $closureSubNodes = [
+                            'static' => false,
+                            'byRef' => false,
+                            //\PhpParser\Node\Param[] Parameters
+                            'params' => [
+                                new \PhpParser\Node\Param(new Name('value'))
+                            ],
+                            'uses' => null,
+                            'returnType' => null,
+                            //\PhpParser\Node[] Statements
+                            'stmts' => [
+                                $nodeReturnPregMatch
+                            ],
+                        ];
+
+                        $closureAttributes = [
+
+                        ];
+
+                        $closure = new \PhpParser\Node\Expr\Closure($closureSubNodes,$closureAttributes);
+
+                        $paramsArrayFilter = [
+                            new Expr\Variable($this->getNaming()->getPropertyName($name)),
+                            $closure
+                        ];
+                        $arrayFilter = new Expr\FuncCall(new Name('array_filter'), $paramsArrayFilter );
+
+                        if( !is_null($jsonSchema->getMinItems()) && !is_null($jsonSchema->getMaxItems()) ) {
+                            $ifs = new Expr\BinaryOp\LogicalAnd($condGreaterOrEqual,$condSmallerOrEqual);
+                            $ifs = new Expr\BinaryOp\LogicalAnd($arrayFilter,$ifs);
+                            $ifs = new Expr\BinaryOp\LogicalAnd($condIsArray,$ifs);
+                        } elseif (!is_null($jsonSchema->getMinItems())) {
+                            $ifs = new Expr\BinaryOp\LogicalAnd($arrayFilter,$condGreaterOrEqual);
+                            $ifs = new Expr\BinaryOp\LogicalAnd($condIsArray,$ifs);
+                        } elseif (!is_null($jsonSchema->getMaxItems())) {
+                            $ifs = new Expr\BinaryOp\LogicalAnd($arrayFilter,$condSmallerOrEqual);
+                            $ifs = new Expr\BinaryOp\LogicalAnd($condIsArray,$ifs);
+                        }
                     } else {
                         if( !is_null($jsonSchema->getMinItems()) && !is_null($jsonSchema->getMaxItems()) ) {
                             $condSmallerOrEqualAndGreaterOrEqual = new Expr\BinaryOp\LogicalAnd($condGreaterOrEqual,$condSmallerOrEqual);
