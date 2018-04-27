@@ -305,15 +305,19 @@ EOD
                         ];
                         $arrayFilter = new Expr\FuncCall(new Name('array_filter'), $paramsArrayFilter );
 
+                        $assignArrayFilter = new Expr\Assign(
+                            new Expr\Variable($this->getNaming()->getPropertyName($name)),
+                            $arrayFilter
+                        );
                         if( !is_null($jsonSchema->getMinItems()) && !is_null($jsonSchema->getMaxItems()) ) {
                             $ifs = new Expr\BinaryOp\LogicalAnd($condGreaterOrEqual,$condSmallerOrEqual);
-                            $ifs = new Expr\BinaryOp\LogicalAnd($arrayFilter,$ifs);
+                            $ifs = new Expr\BinaryOp\LogicalAnd($assignArrayFilter,$ifs);
                             $ifs = new Expr\BinaryOp\LogicalAnd($condIsArray,$ifs);
                         } elseif (!is_null($jsonSchema->getMinItems())) {
-                            $ifs = new Expr\BinaryOp\LogicalAnd($arrayFilter,$condGreaterOrEqual);
+                            $ifs = new Expr\BinaryOp\LogicalAnd($assignArrayFilter,$condGreaterOrEqual);
                             $ifs = new Expr\BinaryOp\LogicalAnd($condIsArray,$ifs);
                         } elseif (!is_null($jsonSchema->getMaxItems())) {
-                            $ifs = new Expr\BinaryOp\LogicalAnd($arrayFilter,$condSmallerOrEqual);
+                            $ifs = new Expr\BinaryOp\LogicalAnd($assignArrayFilter,$condSmallerOrEqual);
                             $ifs = new Expr\BinaryOp\LogicalAnd($condIsArray,$ifs);
                         }
                     } else {
